@@ -30,6 +30,7 @@ import (
 	"time"
 
 	v1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	"github.com/stretchr/testify/assert"
 )
 
 func generatePrivateKeyBytes(keyAlgo v1.PrivateKeyAlgorithm, keySize int) ([]byte, error) {
@@ -360,4 +361,51 @@ func TestParseSingleCertificateChain(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMustParseRDN(t *testing.T) {
+	subject := "CN=foo-long.com, OU=FooLong, OU=Barq, OU=Baz, OU=Dept., O=Corp., C=US"
+	rdnSeq, err := ParseSubjectStringToRdnSequence(subject)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		oidCountry            = []int{2, 5, 4, 6}
+		oidOrganization       = []int{2, 5, 4, 10}
+		oidOrganizationalUnit = []int{2, 5, 4, 11}
+		oidCommonName         = []int{2, 5, 4, 3}
+		// oidSerialNumber       = []int{2, 5, 4, 5}
+		// oidLocality           = []int{2, 5, 4, 7}
+		// oidProvince           = []int{2, 5, 4, 8}
+		// oidStreetAddress      = []int{2, 5, 4, 9}
+		// oidPostalCode         = []int{2, 5, 4, 17}
+	)
+	// ,OU=FooLong,OU=Bar,OU=Baz,OU=Dept.,O=Corp.
+	expectedRdnSeq :=
+		pkix.RDNSequence{
+			[]pkix.AttributeTypeAndValue{
+				{Type: oidCommonName, Value: "foo-long.com"},
+			},
+			[]pkix.AttributeTypeAndValue{
+				{Type: oidOrganizationalUnit, Value: "FooLong"},
+			},
+			[]pkix.AttributeTypeAndValue{
+				{Type: oidOrganizationalUnit, Value: "Barq"},
+			},
+			[]pkix.AttributeTypeAndValue{
+				{Type: oidOrganizationalUnit, Value: "Baz"},
+			},
+			[]pkix.AttributeTypeAndValue{
+				{Type: oidOrganizationalUnit, Value: "Dept."},
+			},
+			[]pkix.AttributeTypeAndValue{
+				{Type: oidOrganization, Value: "Corp."},
+			},
+			[]pkix.AttributeTypeAndValue{
+				{Type: oidCountry, Value: "US"},
+			},
+		}
+
+	assert.Equal(t, rdnSeq, expectedRdnSeq)
 }

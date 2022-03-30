@@ -210,6 +210,26 @@ func GenerateCSR(crt *v1.Certificate) (*x509.CertificateRequest, error) {
 		}
 	}
 
+	// TODO: Also change re-issuing check at https://github.com/cert-manager/cert-manager/blob/master/internal/controller/certificates/policies/checks.go#L107
+	// TODO: Update the ClusterCA & SelfSigned CAs to handle the whole CSR, properly.
+	// TODO: Feature gate
+
+	var extraNames []pkix.AttributeTypeAndValue = []pkix.AttributeTypeAndValue{}
+	if crt.Spec.RawSubject != "" {
+		rdnSequence, err := ParseSubjectStringToRdnSequence(crt.Spec.RawSubject)
+		if err != nil {
+			return nil, err
+		}
+
+		// todo: Appending extra names like this satisfies our requirement but has different semantics compared to the literal subject
+		// the only way out would be to encode manually and set the RawSubject.
+		for _, atv := range rdnSequence {
+			for _, tv := range atv {
+				extraNames = append(extraNames, tv)
+			}
+		}
+	}
+
 	return &x509.CertificateRequest{
 		// Version 0 is the only one defined in the PKCS#10 standard, RFC2986.
 		// This value isn't used by Go at the time of writing.
@@ -227,6 +247,7 @@ func GenerateCSR(crt *v1.Certificate) (*x509.CertificateRequest, error) {
 			PostalCode:         subject.PostalCodes,
 			SerialNumber:       subject.SerialNumber,
 			CommonName:         commonName,
+			ExtraNames:         extraNames,
 		},
 		DNSNames:        dnsNames,
 		IPAddresses:     iPAddresses,
@@ -303,6 +324,22 @@ func GenerateTemplate(crt *v1.Certificate) (*x509.Certificate, error) {
 		return nil, err
 	}
 
+	var extraNames []pkix.AttributeTypeAndValue = []pkix.AttributeTypeAndValue{}
+	if crt.Spec.RawSubject != "" {
+		rdnSequence, err := ParseSubjectStringToRdnSequence(crt.Spec.RawSubject)
+		if err != nil {
+			return nil, err
+		}
+
+		// todo: Appending extra names like this satisfies our requirement but has different semantics compared to the literal subject
+		// the only way out would be to encode manually and set the RawSubject.
+		for _, atv := range rdnSequence {
+			for _, tv := range atv {
+				extraNames = append(extraNames, tv)
+			}
+		}
+	}
+
 	return &x509.Certificate{
 		// Version must be 2 according to RFC5280.
 		// A version value of 2 confusingly means version 3.
@@ -323,6 +360,7 @@ func GenerateTemplate(crt *v1.Certificate) (*x509.Certificate, error) {
 			PostalCode:         subject.PostalCodes,
 			SerialNumber:       subject.SerialNumber,
 			CommonName:         commonName,
+			ExtraNames:         extraNames,
 		},
 		NotBefore: time.Now(),
 		NotAfter:  time.Now().Add(certDuration),

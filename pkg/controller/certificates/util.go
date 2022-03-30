@@ -21,6 +21,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
+	"crypto/x509/pkix"
+	"encoding/asn1"
+
 	"fmt"
 	"reflect"
 	"time"
@@ -121,58 +124,88 @@ func RequestMatchesSpec(req *cmapi.CertificateRequest, spec cmapi.CertificateSpe
 		spec.Subject = &cmapi.X509Subject{}
 	}
 
+	var rdnSequenceFromCertificateRequest pkix.RDNSequence
+	_, err2 := asn1.Unmarshal(x509req.RawSubject, &rdnSequenceFromCertificateRequest)
+	if err2 != nil {
+		//todo what to do on error? Add violation or error out?
+	}
+
 	var violations []string
-	if x509req.Subject.CommonName != spec.CommonName {
-		violations = append(violations, "spec.commonName")
-	}
-	if !util.EqualUnsorted(x509req.DNSNames, spec.DNSNames) {
-		violations = append(violations, "spec.dnsNames")
-	}
-	if !util.EqualUnsorted(pki.IPAddressesToString(x509req.IPAddresses), spec.IPAddresses) {
-		violations = append(violations, "spec.ipAddresses")
-	}
-	if !util.EqualUnsorted(pki.URLsToString(x509req.URIs), spec.URIs) {
-		violations = append(violations, "spec.uris")
-	}
-	if !util.EqualUnsorted(x509req.EmailAddresses, spec.EmailAddresses) {
-		violations = append(violations, "spec.emailAddresses")
-	}
-	if x509req.Subject.SerialNumber != spec.Subject.SerialNumber {
-		violations = append(violations, "spec.subject.serialNumber")
-	}
-	if !util.EqualUnsorted(x509req.Subject.Organization, spec.Subject.Organizations) {
-		violations = append(violations, "spec.subject.organizations")
-	}
-	if !util.EqualUnsorted(x509req.Subject.Country, spec.Subject.Countries) {
-		violations = append(violations, "spec.subject.countries")
-	}
-	if !util.EqualUnsorted(x509req.Subject.Locality, spec.Subject.Localities) {
-		violations = append(violations, "spec.subject.localities")
-	}
-	if !util.EqualUnsorted(x509req.Subject.OrganizationalUnit, spec.Subject.OrganizationalUnits) {
-		violations = append(violations, "spec.subject.organizationalUnits")
-	}
-	if !util.EqualUnsorted(x509req.Subject.PostalCode, spec.Subject.PostalCodes) {
-		violations = append(violations, "spec.subject.postCodes")
-	}
-	if !util.EqualUnsorted(x509req.Subject.Province, spec.Subject.Provinces) {
-		violations = append(violations, "spec.subject.postCodes")
-	}
-	if !util.EqualUnsorted(x509req.Subject.StreetAddress, spec.Subject.StreetAddresses) {
-		violations = append(violations, "spec.subject.streetAddresses")
-	}
-	if req.Spec.IsCA != spec.IsCA {
-		violations = append(violations, "spec.isCA")
-	}
-	if !util.EqualKeyUsagesUnsorted(req.Spec.Usages, spec.Usages) {
-		violations = append(violations, "spec.usages")
-	}
-	if spec.Duration != nil && req.Spec.Duration != nil &&
-		spec.Duration.Duration != req.Spec.Duration.Duration {
-		violations = append(violations, "spec.duration")
-	}
-	if !reflect.DeepEqual(spec.IssuerRef, req.Spec.IssuerRef) {
-		violations = append(violations, "spec.issuerRef")
+	if spec.RawSubject == "" {
+		if x509req.Subject.CommonName != spec.CommonName {
+			violations = append(violations, "spec.commonName")
+		}
+		if !util.EqualUnsorted(x509req.DNSNames, spec.DNSNames) {
+			violations = append(violations, "spec.dnsNames")
+		}
+		if !util.EqualUnsorted(pki.IPAddressesToString(x509req.IPAddresses), spec.IPAddresses) {
+			violations = append(violations, "spec.ipAddresses")
+		}
+		if !util.EqualUnsorted(pki.URLsToString(x509req.URIs), spec.URIs) {
+			violations = append(violations, "spec.uris")
+		}
+		if !util.EqualUnsorted(x509req.EmailAddresses, spec.EmailAddresses) {
+			violations = append(violations, "spec.emailAddresses")
+		}
+		if x509req.Subject.SerialNumber != spec.Subject.SerialNumber {
+			violations = append(violations, "spec.subject.serialNumber")
+		}
+		if !util.EqualUnsorted(x509req.Subject.Organization, spec.Subject.Organizations) {
+			violations = append(violations, "spec.subject.organizations")
+		}
+		if !util.EqualUnsorted(x509req.Subject.Country, spec.Subject.Countries) {
+			violations = append(violations, "spec.subject.countries")
+		}
+		if !util.EqualUnsorted(x509req.Subject.Locality, spec.Subject.Localities) {
+			violations = append(violations, "spec.subject.localities")
+		}
+		if !util.EqualUnsorted(x509req.Subject.OrganizationalUnit, spec.Subject.OrganizationalUnits) {
+			violations = append(violations, "spec.subject.organizationalUnits")
+		}
+		if !util.EqualUnsorted(x509req.Subject.PostalCode, spec.Subject.PostalCodes) {
+			violations = append(violations, "spec.subject.postCodes")
+		}
+		if !util.EqualUnsorted(x509req.Subject.Province, spec.Subject.Provinces) {
+			violations = append(violations, "spec.subject.postCodes")
+		}
+		if !util.EqualUnsorted(x509req.Subject.StreetAddress, spec.Subject.StreetAddresses) {
+			violations = append(violations, "spec.subject.streetAddresses")
+		}
+		if req.Spec.IsCA != spec.IsCA {
+			violations = append(violations, "spec.isCA")
+		}
+		if !util.EqualKeyUsagesUnsorted(req.Spec.Usages, spec.Usages) {
+			violations = append(violations, "spec.usages")
+		}
+		if spec.Duration != nil && req.Spec.Duration != nil &&
+			spec.Duration.Duration != req.Spec.Duration.Duration {
+			violations = append(violations, "spec.duration")
+		}
+		if !reflect.DeepEqual(spec.IssuerRef, req.Spec.IssuerRef) {
+			violations = append(violations, "spec.issuerRef")
+		}
+	} else {
+		// we have a RawSubject
+		// parse the subject of the csr in the same way as we parse RawSubject and see whether the RDN Sequences match
+
+		var rdnSequenceFromCertificate = pkix.RDNSequence{}
+		if spec.RawSubject != "" {
+			parsedRdnSequence, err := pki.ParseSubjectStringToRdnSequence(spec.RawSubject)
+			if err != nil {
+				return nil, err
+			}
+			rdnSequenceFromCertificate = parsedRdnSequence
+		}
+
+		// todo: Remove prints
+		fmt.Println(fmt.Sprintf("CSR [%s]", string(req.Spec.Request)))
+		fmt.Println(fmt.Sprintf("CSR Subject: [%s]", rdnSequenceFromCertificateRequest))
+		fmt.Println("RawSubject: ", spec.RawSubject, spec.RawSubject == "")
+
+		fmt.Println("hardocedDN", rdnSequenceFromCertificate, "csrRDN", rdnSequenceFromCertificateRequest)
+		if !reflect.DeepEqual(rdnSequenceFromCertificate, rdnSequenceFromCertificateRequest) {
+			violations = append(violations, "spec.literalSubject")
+		}
 	}
 
 	return violations, nil

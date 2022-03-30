@@ -84,6 +84,9 @@ type CertificateSpec struct {
 	// Full X509 name specification (https://golang.org/pkg/crypto/x509/pkix/#Name).
 	Subject *X509Subject
 
+	// +optional
+	RawSubject string `json:"rawSubject,omitempty"`
+
 	// CommonName is a common name to be used on the Certificate.
 	// The CommonName should have a length of 64 characters or fewer to avoid
 	// generating invalid CSRs.

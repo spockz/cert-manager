@@ -18,6 +18,10 @@ package certificates
 
 import (
 	"context"
+	"crypto/x509/pkix"
+	"encoding/asn1"
+	"encoding/base64"
+	"fmt"
 	"strings"
 	"time"
 
@@ -209,6 +213,62 @@ func (s *Suite) Define() {
 
 			By("Validating the issued Certificate...")
 			err = f.Helper().ValidateCertificate(testCertificate, validation.CertificateSetForUnsupportedFeatureSet(s.UnsupportedFeatures)...)
+			Expect(err).NotTo(HaveOccurred())
+		}, featureset.CommonNameFeature)
+
+		s.it(f, "should issue a basic, defaulted certificate for a single distinct DNS Name with specific RDN", func(issuerRef cmmeta.ObjectReference) {
+			// Some issuers use the CN to define the cert's "ID"
+			// if one cert manages to be in an error state in the issuer it might throw an error
+			// this makes the CN more unique
+			host := fmt.Sprintf("*.%s.foo-long.bar.com", util.RandStringRunes(10))
+			rawSubject := fmt.Sprintf("CN=%s,OU=FooLong,OU=Bar,OU=Baz,OU=Dept.,O=Corp.", host)
+			testCertificate := &cmapi.Certificate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testcert",
+					Namespace: f.Namespace.Name,
+				},
+				Spec: cmapi.CertificateSpec{
+					SecretName: "testcert-tls",
+					IssuerRef:  issuerRef,
+					RawSubject: rawSubject,
+					DNSNames:   []string{host},
+					CommonName: host,
+				},
+			}
+			By("Creating a Certificate")
+			err := f.CRClient.Create(ctx, testCertificate)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Waiting for the Certificate to be issued...")
+
+			testCertificate, err = f.Helper().WaitForCertificateReadyAndDoneIssuing(testCertificate, time.Minute*5)
+			Expect(err).NotTo(HaveOccurred())
+
+			//type ValidationFunc func(certificate *cmapi.Certificate, secret *corev1.Secret) error
+			valFunc := func(certificate *cmapi.Certificate, secret *corev1.Secret) error {
+				certBytes, ok := secret.Data[corev1.TLSCertKey]
+				if !ok {
+					return fmt.Errorf("No certificate data found for Certificate %q (secret %q)", certificate.Name, certificate.Spec.SecretName)
+				}
+
+				createdCert, err := pki.DecodeX509CertificateBytes(certBytes)
+				if err != nil {
+					return err
+				}
+
+				// dns, err := ldap.ParseDN(string(createdCert.RawSubject))
+				var dns pkix.RDNSequence
+				rest, err := asn1.Unmarshal(createdCert.RawSubject, &dns)
+				fmt.Fprintln(GinkgoWriter, "cert", base64.StdEncoding.EncodeToString(createdCert.RawSubject), dns, err, rest)
+				if dns.String() != testCertificate.Spec.RawSubject {
+					return fmt.Errorf("Generated certificate's subject [%s] does not match expected subject [%s]", dns.String(), rawSubject)
+				}
+				return nil
+			}
+
+			By("Validating the issued Certificate...")
+			// TODO: Validaate the order of the OUs
+			err = f.Helper().ValidateCertificate(testCertificate, append(validation.CertificateSetForUnsupportedFeatureSet(s.UnsupportedFeatures), valFunc)...)
 			Expect(err).NotTo(HaveOccurred())
 		}, featureset.CommonNameFeature)
 
