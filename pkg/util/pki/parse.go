@@ -20,7 +20,9 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
+	"github.com/go-ldap/ldap/v3"
 
 	"github.com/cert-manager/cert-manager/pkg/util/errors"
 )
@@ -359,4 +361,46 @@ func (c *chainNode) root() *chainNode {
 // signed by itself, which would make it a "root" certificate.
 func isSelfSignedCertificate(cert *x509.Certificate) bool {
 	return cert.CheckSignatureFrom(cert) == nil
+}
+
+// Copied from pkix.attributeTypeNames and inverted. (Sadly it is private.)
+var attributeTypeNames = map[string][]int{
+	"C":            {2, 5, 4, 6},
+	"O":            {2, 5, 4, 10},
+	"OU":           {2, 5, 4, 11},
+	"CN":           {2, 5, 4, 3},
+	"SERIALNUMBER": {2, 5, 4, 5},
+	"L":            {2, 5, 4, 7},
+	"ST":           {2, 5, 4, 8},
+	"STREET":       {2, 5, 4, 9},
+	"POSTALCODE":   {2, 5, 4, 17},
+	"GN":           {2, 5, 4, 42},
+	"DC":           {0, 9, 2342, 19200300, 100, 1, 25},
+}
+
+func ParseSubjectStringToRdnSequence(subject string) (pkix.RDNSequence, error) {
+
+	dns, err := ldap.ParseDN(subject)
+	if err != nil {
+		return nil, err
+	}
+
+	var rdns pkix.RDNSequence
+	for _, ldapRelativeDN := range dns.RDNs {
+
+		var atvs []pkix.AttributeTypeAndValue
+		for _, ldapATV := range ldapRelativeDN.Attributes {
+			ldapATVtype := attributeTypeNames[ldapATV.Type]
+			if ldapATVtype == nil {
+				return nil, errors.NewInvalidData("unrecognized subject type supplied: %s", ldapATV.Type)
+			}
+			atvs = append(atvs, pkix.AttributeTypeAndValue{
+				Type:  attributeTypeNames[ldapATV.Type],
+				Value: ldapATV.Value,
+			})
+		}
+		rdns = append(rdns, atvs)
+	}
+	return rdns, nil
+
 }
