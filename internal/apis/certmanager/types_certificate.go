@@ -84,6 +84,8 @@ type CertificateSpec struct {
 	// Full X509 name specification (https://golang.org/pkg/crypto/x509/pkix/#Name).
 	Subject *X509Subject
 
+	// An alternate way of specifying a Subject. If this field is used, Subject will be ignored.
+	// Example: "CN=foo-long.com, OU=FooLong, OU=Barq, OU=Baz, OU=Dept., O=Corp., C=US, GN=Bartwo"
 	// +optional
 	RawSubject string `json:"rawSubject,omitempty"`
 

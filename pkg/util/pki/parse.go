@@ -22,9 +22,9 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"github.com/go-ldap/ldap/v3"
 
 	"github.com/cert-manager/cert-manager/pkg/util/errors"
-	"github.com/go-ldap/ldap/v3"
 )
 
 // DecodePrivateKeyBytes will decode a PEM encoded private key into a crypto.Signer.
@@ -374,6 +374,8 @@ var attributeTypeNames = map[string][]int{
 	"ST":           {2, 5, 4, 8},
 	"STREET":       {2, 5, 4, 9},
 	"POSTALCODE":   {2, 5, 4, 17},
+	"GN":           {2, 5, 4, 42},
+	"DC":           {0, 9, 2342, 19200300, 100, 1, 25},
 }
 
 func ParseSubjectStringToRdnSequence(subject string) (pkix.RDNSequence, error) {
@@ -388,6 +390,10 @@ func ParseSubjectStringToRdnSequence(subject string) (pkix.RDNSequence, error) {
 
 		var atvs []pkix.AttributeTypeAndValue
 		for _, ldapATV := range ldapRelativeDN.Attributes {
+			ldapATVtype := attributeTypeNames[ldapATV.Type]
+			if ldapATVtype == nil {
+				return nil, errors.NewInvalidData("unrecognized subject type supplied: %s", ldapATV.Type)
+			}
 			atvs = append(atvs, pkix.AttributeTypeAndValue{
 				Type:  attributeTypeNames[ldapATV.Type],
 				Value: ldapATV.Value,

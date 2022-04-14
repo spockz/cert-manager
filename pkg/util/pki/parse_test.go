@@ -363,8 +363,16 @@ func TestParseSingleCertificateChain(t *testing.T) {
 	}
 }
 
+func TestMustParseRDNUnknownType(t *testing.T) {
+	subject := "CN=foo-long.com, OU=FooLong, OU=Barq, Foo=Bar"
+	_, err := ParseSubjectStringToRdnSequence(subject)
+	if err == nil {
+		t.Errorf("expected an error, but did not receieve one.")
+	}
+}
+
 func TestMustParseRDN(t *testing.T) {
-	subject := "CN=foo-long.com, OU=FooLong, OU=Barq, OU=Baz, OU=Dept., O=Corp., C=US"
+	subject := "CN=foo-long.com, OU=FooLong, OU=Barq, OU=Baz, OU=Dept., O=Corp., C=US, GN=Bartwo"
 	rdnSeq, err := ParseSubjectStringToRdnSequence(subject)
 	if err != nil {
 		t.Fatal(err)
